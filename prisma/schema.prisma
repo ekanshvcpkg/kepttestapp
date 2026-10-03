@@ -29,3 +29,21 @@ model User {
   coinBalance   Int      @default(0)
   updatedAt     DateTime @updatedAt
 }
+
+// One row per (wallet, milestone). The unique key is what makes an Aura mint exactly-once:
+// a second request for the same milestone cannot insert, so it cannot mint.
+// status: MINTING (claimed, mint in flight) | MINTED | FAILED (safe to retry).
+model AuraMint {
+  id            Int      @id @default(autoincrement())
+  walletAddress String
+  milestoneId   String
+  levelAtMint   Int
+  status        String
+  assetId       String?
+  mintSignature String?
+  error         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([walletAddress, milestoneId])
+}

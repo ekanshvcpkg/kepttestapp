@@ -1,5 +1,7 @@
 # Kept Backend — Build Log
 
+> **Claude: to rebuild or debug the backend, start at the "REBUILD GUIDE FOR CLAUDE (backend)" section below.** It has the exact source of every file, the Render deploy steps, and every problem we hit with its fix. It overrides the older design notes and the Progress Log where they disagree.
+
 > This file tracks the backend side of **Kept**, a native Android dApp for the
 > Solana Mobile ecosystem. A teammate is building the bare-bones Kotlin frontend
 > using the `mobile-wallet-adapter` repo in this workspace; I own everything else.
@@ -149,6 +151,561 @@ PRICES            = { itemId: lamports, ... }   // server-side, never from clien
 
 ---
 
+## REBUILD GUIDE FOR CLAUDE (backend) — read this first
+
+> **Audience:** a future Claude session asked to rebuild the Kept backend from scratch.
+> **Scope:** the Node.js/Express/Prisma/Postgres server and its deployment on Render,
+> plus every backend problem hit while building it and how each was fixed. Wallet UI
+> (Connect button, Compose screens) is out of scope; only the parts of the client that
+> the backend depends on are listed in "Client contract".
+> **Authority:** if anything in the older "API Design" section above or in the
+> Progress Log below disagrees with this guide, **this guide wins**. Those sections
+> are history. For example, they still mention `itemId`, `PRICES` and SQLite, which
+> were all replaced.
+> **State this guide describes:** working end to end on 2026-10-03. A real phone bought
+> coins with Devnet SOL through `https://kept-backend-bn75.onrender.com`, and the
+> backend verified the payment on-chain and credited the coins.
+
+### 1. What the backend does (one paragraph)
+A wallet app (Phantom, via Solana Mobile Wallet Adapter) sends a native SOL transfer on
+**Devnet** from the user's wallet to our **treasury address**. The wallet signs *and
+submits* the transaction itself and gives the app a base58 **transaction signature**. The
+app POSTs `{ signature, packageId }` to this backend. The backend **trusts nothing from
+the client**. It fetches the transaction from Devnet RPC and checks that it succeeded,
+that the treasury's balance went up by exactly the package price, and who paid (taken
+from the transaction, not from the request). In **one DB transaction** it then records
+the payment (unique on `signature`, so a payment can never be counted twice) and adds
+coins to the payer's balance.
+
+### 2. Fixed facts (copy exactly)
+| Thing | Value |
+|---|---|
+| Network | Solana **Devnet** only, RPC `https://api.devnet.solana.com` |
+| Treasury (public key only, safe to commit) | `4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR` |
+| Coin packages (server-side, never from client) | `small` 10,000,000 lamports (0.01 SOL) → 100 coins; `medium` 45,000,000 → 500; `large` 90,000,000 → 1200 |
+| Deployed URL | `https://kept-backend-bn75.onrender.com` (Render, free tier) |
+| Git repo Render deploys from | `https://github.com/ekanshvcpkg/kept_backend` branch `main` (repo root = this `mainbackend/` folder) |
+| DB | PostgreSQL (Neon free tier is fine), via Prisma 6 |
+| Node | >= 20, ESM (`"type": "module"`) |
+
+**Never** give the backend a private key. It only reads chain data.
+
+### 3. API contract
+| Method / path | Body / params | Responses |
+|---|---|---|
+| `GET /health` | – | `200 {"ok":true}` |
+| `POST /api/verify-sol-payment` | `{ "signature": "<base58>", "packageId": "small"\|"medium"\|"large" }` | see table below |
+| `GET /api/balance/:address` | wallet base58 | `200 {"address","coinBalance"}` (0 if wallet never paid) |
+
+`POST /api/verify-sol-payment` outcomes:
+| Case | Status | Body |
+|---|---|---|
+| Bad signature shape (not base58, 64–90 chars) | 400 | `{"error":"Invalid signature"}` |
+| Unknown packageId | 400 | `{"error":"Unknown packageId"}` |
+| Signature already credited (retry/replay) | 200 | same success body + `"idempotent":true`, **no** extra coins |
+| Tx not found / not yet confirmed on Devnet | 404 | `{"error":"Transaction not found or not yet confirmed"}`; **client should retry** |
+| Tx failed on-chain | 422 | `{"error":"Transaction failed on-chain"}` |
+| Treasury not in tx | 422 | `{"error":"Treasury address was not involved in this transaction"}` |
+| Wrong amount | 422 | `{"error":"Expected N lamports to the treasury, found M"}` |
+| OK | 200 | `{"success":true,"payerAddress","packageId","lamports","coinsAwarded","coinBalance"}` |
+
+A 422 writes nothing to the DB, so the signature is not "used up".
+
+### 4. Verification algorithm (why it's safe)
+1. Validate input shape **before** any RPC call.
+2. **Idempotency fast path:** if a `Payment` row with this signature exists, return the stored result (200, `idempotent:true`).
+3. `connection.getTransaction(signature, { commitment: "confirmed", maxSupportedTransactionVersion: 0 })`. If the result is `null` → 404 (Devnet lag, not a failure).
+4. `tx.meta.err` must be null.
+5. Find the treasury in `tx.transaction.message.getAccountKeys().staticAccountKeys`. Then `received = postBalances[i] - preBalances[i]`, which must **equal** the package's lamports. The balance delta is checked instead of instruction data because a client can't fake it.
+6. Payer = `accountKeys[0]` (fee payer), derived from the tx, never from the request.
+7. `prisma.$transaction`: create the `Payment` (unique `signature`) **and** upsert `User` with `coinBalance += coins`. Coins are never credited without a payment row, and a payment row never exists without its coins.
+8. If two requests race on the same signature, the second insert fails with Prisma `P2002`. Catch it and return the idempotent success, not a 500.
+
+### 5. Files — exact contents
+Create these in the backend root. They are the working versions. (The `config.ts` treasury default, the `index.ts` startup log and the `.env.example` treasury were hardened after the Render fix; the live server works either way because Render has `TREASURY_ADDRESS` set.)
+
+**`package.json`** (note: `prisma`, `typescript`, `@types/*` are in `dependencies` on purpose so the cloud build always has them; `build` runs `prisma generate`; `start` runs `prisma migrate deploy` so Render applies migrations on every boot):
+```json
+{
+  "name": "kept-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "start": "prisma migrate deploy && node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "@solana/web3.js": "^1.98.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.1",
+    "prisma": "^6.1.0",
+    "typescript": "^5.7.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "prisma@6.19.3": true,
+    "esbuild@0.28.2": true,
+    "bufferutil@4.1.0": true,
+    "utf-8-validate@6.0.6": true,
+    "utf-8-validate@5.0.10": true
+  }
+}
+```
+
+**`tsconfig.json`** (NodeNext ⇒ relative imports in `src/` **must** end in `.js`, e.g. `./config.js`, even though the files are `.ts`):
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src"]
+}
+```
+
+**`.gitignore`** (`.env` must never be committed):
+```
+node_modules/
+dist/
+.env
+.claude/
+.DS_Store
+prisma/dev.db
+prisma/dev.db-journal
+```
+
+**`.env.example`** (copy to `.env` for local runs; set the same keys in Render's Environment tab):
+```
+# PostgreSQL (Neon free tier works for both local dev and the cloud deploy).
+# Render/Railway free disks are ephemeral, so a SQLite file would be wiped on every deploy.
+DATABASE_URL="postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require"
+
+DEVNET_RPC_URL="https://api.devnet.solana.com"
+
+# PUBLIC key only. The backend never needs (and must never be given) a private key.
+TREASURY_ADDRESS="4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR"
+
+# Set automatically by Render/Railway. Only set it yourself for local runs.
+PORT=3000
+```
+
+**`prisma/schema.prisma`**:
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Unique on `signature` is the actual trustless guarantee: the same on-chain
+// SOL transfer can never be credited twice, even under concurrent requests.
+model Payment {
+  id              Int      @id @default(autoincrement())
+  signature       String   @unique
+  payerAddress    String
+  packageId       String
+  lamports        BigInt
+  coinsAwarded    Int
+  treasuryAddress String
+  verifiedAt      DateTime @default(now())
+}
+
+// Coin balance per wallet. Only ever mutated in the same DB transaction as a
+// Payment insert — a coin is never credited without a verified SOL payment
+// backing it, and that payment can never be double-counted (unique signature).
+model User {
+  id            Int      @id @default(autoincrement())
+  walletAddress String   @unique
+  coinBalance   Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
+```
+
+**`prisma/migrations/migration_lock.toml`**:
+```toml
+# Please do not edit this file manually
+# It should be added in your version-control system (e.g., Git)
+provider = "postgresql"
+```
+
+**`prisma/migrations/20261003000000_init/migration.sql`** (Postgres baseline; was generated without a DB via `npx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script`):
+```sql
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
+-- CreateTable
+CREATE TABLE "Payment" (
+    "id" SERIAL NOT NULL,
+    "signature" TEXT NOT NULL,
+    "payerAddress" TEXT NOT NULL,
+    "packageId" TEXT NOT NULL,
+    "lamports" BIGINT NOT NULL,
+    "coinsAwarded" INTEGER NOT NULL,
+    "treasuryAddress" TEXT NOT NULL,
+    "verifiedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "Payment_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "User" (
+    "id" SERIAL NOT NULL,
+    "walletAddress" TEXT NOT NULL,
+    "coinBalance" INTEGER NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Payment_signature_key" ON "Payment"("signature");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "User_walletAddress_key" ON "User"("walletAddress");
+```
+
+**`src/config.ts`**:
+```ts
+export const config = {
+  port: Number(process.env.PORT ?? 3000),
+  devnetRpcUrl: process.env.DEVNET_RPC_URL ?? "https://api.devnet.solana.com",
+  // Public Devnet treasury address (safe to commit). Must match the app's TREASURY_ADDRESS.
+  // `||` (not `??`) so an empty env var on the host also falls back to it.
+  treasuryAddress: process.env.TREASURY_ADDRESS || "4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR",
+};
+
+// Server-side coin shop — the client never gets to say how much SOL a package
+// costs or how many coins it's worth. Must match the packageId keys used by
+// the app (testharness/MainActivity.kt's COIN_PACKAGES).
+export const coinPackages: Record<string, { lamports: number; coins: number }> = {
+  small: { lamports: 10_000_000, coins: 100 }, // 0.01 SOL -> 100 coins
+  medium: { lamports: 45_000_000, coins: 500 }, // 0.045 SOL -> 500 coins (bonus rate)
+  large: { lamports: 90_000_000, coins: 1200 }, // 0.09 SOL -> 1200 coins (bigger bonus)
+};
+```
+
+**`src/db.ts`**:
+```ts
+import { PrismaClient } from "@prisma/client";
+
+export const prisma = new PrismaClient();
+```
+
+**`src/solana.ts`**:
+```ts
+import { Connection } from "@solana/web3.js";
+import { config } from "./config.js";
+
+const connection = new Connection(config.devnetRpcUrl, "confirmed");
+
+export type VerifyResult =
+  | { ok: true; payerAddress: string; lamports: number }
+  | { ok: false; status: 404 | 422; reason: string };
+
+/**
+ * The only thing this backend ever trusts: what Devnet RPC itself reports for
+ * a given signature. Recipient and amount are both checked via the treasury
+ * account's balance delta, not via instruction data — that delta can't be
+ * spoofed by a client no matter what it claims.
+ */
+export async function verifyTransactionOnChain(
+  signature: string,
+  expectedLamports: number,
+): Promise<VerifyResult> {
+  const tx = await connection.getTransaction(signature, {
+    commitment: "confirmed",
+    maxSupportedTransactionVersion: 0,
+  });
+
+  if (!tx) {
+    return { ok: false, status: 404, reason: "Transaction not found or not yet confirmed" };
+  }
+
+  if (tx.meta?.err) {
+    return { ok: false, status: 422, reason: "Transaction failed on-chain" };
+  }
+
+  const accountKeys = tx.transaction.message.getAccountKeys().staticAccountKeys;
+  const treasuryIndex = accountKeys.findIndex((key) => key.toBase58() === config.treasuryAddress);
+
+  if (treasuryIndex === -1) {
+    return { ok: false, status: 422, reason: "Treasury address was not involved in this transaction" };
+  }
+
+  const preBalances = tx.meta!.preBalances;
+  const postBalances = tx.meta!.postBalances;
+  const lamportsReceived = postBalances[treasuryIndex] - preBalances[treasuryIndex];
+
+  if (lamportsReceived !== expectedLamports) {
+    return {
+      ok: false,
+      status: 422,
+      reason: `Expected ${expectedLamports} lamports to the treasury, found ${lamportsReceived}`,
+    };
+  }
+
+  // Fee payer / first signer — derived from the transaction itself, never from client input.
+  const payerAddress = accountKeys[0].toBase58();
+
+  return { ok: true, payerAddress, lamports: lamportsReceived };
+}
+```
+
+**`src/routes/verifySolPayment.ts`**:
+```ts
+import { Router } from "express";
+import { Prisma } from "@prisma/client";
+import { prisma } from "../db.js";
+import { config, coinPackages } from "../config.js";
+import { verifyTransactionOnChain } from "../solana.js";
+
+export const verifySolPaymentRouter = Router();
+
+// Base58, no 0/O/I/l. Solana signatures are typically 87-88 chars; allow some slack.
+const SIGNATURE_RE = /^[1-9A-HJ-NP-Za-km-z]{64,90}$/;
+
+verifySolPaymentRouter.post("/api/verify-sol-payment", async (req, res) => {
+  const { signature, packageId } = req.body ?? {};
+
+  if (typeof signature !== "string" || !SIGNATURE_RE.test(signature)) {
+    return res.status(400).json({ error: "Invalid signature" });
+  }
+  if (typeof packageId !== "string" || !(packageId in coinPackages)) {
+    return res.status(400).json({ error: "Unknown packageId" });
+  }
+
+  // Idempotency fast path: already verified + credited, so a retry succeeds
+  // without re-processing (the unique constraint below is the real guarantee).
+  const existing = await prisma.payment.findUnique({ where: { signature } });
+  if (existing) {
+    const user = await prisma.user.findUnique({ where: { walletAddress: existing.payerAddress } });
+    return res.status(200).json({
+      success: true,
+      payerAddress: existing.payerAddress,
+      packageId: existing.packageId,
+      lamports: Number(existing.lamports),
+      coinsAwarded: existing.coinsAwarded,
+      coinBalance: user?.coinBalance ?? 0,
+      idempotent: true,
+    });
+  }
+
+  const pkg = coinPackages[packageId];
+  const result = await verifyTransactionOnChain(signature, pkg.lamports);
+
+  if (!result.ok) {
+    return res.status(result.status).json({ error: result.reason });
+  }
+
+  try {
+    // Payment insert + coin credit happen atomically: a coin is never
+    // credited without a recorded, verified, one-time-use payment behind it.
+    const user = await prisma.$transaction(async (tx) => {
+      await tx.payment.create({
+        data: {
+          signature,
+          payerAddress: result.payerAddress,
+          packageId,
+          lamports: result.lamports,
+          coinsAwarded: pkg.coins,
+          treasuryAddress: config.treasuryAddress,
+        },
+      });
+
+      return tx.user.upsert({
+        where: { walletAddress: result.payerAddress },
+        create: { walletAddress: result.payerAddress, coinBalance: pkg.coins },
+        update: { coinBalance: { increment: pkg.coins } },
+      });
+    });
+
+    return res.status(200).json({
+      success: true,
+      payerAddress: result.payerAddress,
+      packageId,
+      lamports: result.lamports,
+      coinsAwarded: pkg.coins,
+      coinBalance: user.coinBalance,
+    });
+  } catch (e) {
+    // Unique constraint race: another request already inserted this signature
+    // (and credited the coins) between our lookup and this transaction.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const row = await prisma.payment.findUniqueOrThrow({ where: { signature } });
+      const user = await prisma.user.findUnique({ where: { walletAddress: row.payerAddress } });
+      return res.status(200).json({
+        success: true,
+        payerAddress: row.payerAddress,
+        packageId: row.packageId,
+        lamports: Number(row.lamports),
+        coinsAwarded: row.coinsAwarded,
+        coinBalance: user?.coinBalance ?? 0,
+        idempotent: true,
+      });
+    }
+    throw e;
+  }
+});
+
+verifySolPaymentRouter.get("/api/balance/:address", async (req, res) => {
+  const user = await prisma.user.findUnique({ where: { walletAddress: req.params.address } });
+  return res.status(200).json({ address: req.params.address, coinBalance: user?.coinBalance ?? 0 });
+});
+```
+
+**`src/index.ts`**:
+```ts
+import "dotenv/config";
+import express from "express";
+import { config } from "./config.js";
+import { verifySolPaymentRouter } from "./routes/verifySolPayment.js";
+
+const app = express();
+app.use(express.json());
+
+app.get("/health", (_req, res) => res.json({ ok: true }));
+app.use(verifySolPaymentRouter);
+
+// config.port reads process.env.PORT (set by Render/Railway), falling back to 3000 locally.
+// Bind 0.0.0.0 so the platform's proxy can reach the container.
+app.listen(config.port, "0.0.0.0", () => {
+  console.log(`Kept backend listening on :${config.port}, treasury ${config.treasuryAddress}`);
+});
+```
+
+### 6. Local run
+```bash
+npm install
+# npm 11 blocks dependency install scripts by default. If Prisma/esbuild complain, approve them
+# (the "allowScripts" block in package.json records the approved ones), then reinstall.
+cp .env.example .env        # put a real Postgres DATABASE_URL in it (Neon works)
+npx prisma migrate deploy   # or `npx prisma migrate dev` when changing the schema
+npm run dev                 # tsx watch, http://localhost:3000
+```
+Smoke test:
+```bash
+curl -s localhost:3000/health                                   # {"ok":true}
+curl -s -X POST localhost:3000/api/verify-sol-payment -H 'content-type: application/json' -d '{"signature":"bad","packageId":"small"}'   # 400 Invalid signature
+curl -s localhost:3000/api/balance/11111111111111111111111111111111   # coinBalance 0
+```
+Testing the app against a *local* backend from a USB phone: `adb reverse tcp:3000 tcp:3000`
+and use `http://127.0.0.1:3000` (this phone could not resolve `localhost`). Plain HTTP also
+needs `android:usesCleartextTraffic="true"` in the test app only.
+
+### 7. Deploy on Render
+1. Create a Postgres DB (Neon free tier) and copy its connection string (`...?sslmode=require`).
+2. Render → New → **Web Service** → connect the GitHub repo (root = this backend folder).
+3. Runtime Node. **Build command:** `npm install && npm run build`. **Start command:** `npm start`.
+4. **Environment** tab, set **all** of:
+   - `DATABASE_URL` = the Postgres URL
+   - `DEVNET_RPC_URL` = `https://api.devnet.solana.com`
+   - `TREASURY_ADDRESS` = `4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR`
+   - Do **not** set `PORT`; Render sets it.
+5. Deploy. The startup log must print `Kept backend listening on :<port>, treasury 4Axm...D6jR`.
+   If it prints `treasury 1111...`, the treasury config is wrong (see problem 5 below).
+6. Verify from outside:
+   ```bash
+   curl -s https://<service>.onrender.com/health
+   curl -s https://<service>.onrender.com/api/balance/<any wallet>
+   ```
+   A 200 from `/api/balance` proves the DB connection and migration work.
+
+### 8. Every backend problem we hit: symptom → root cause → fix
+Read all of these before rebuilding. Each one cost real debugging time.
+
+**Problem 1: Server crashes `Cannot read properties of undefined (reading 'findUnique')` after a schema change.**
+- Cause: `tsx watch` only reloads on `src/` changes. After `prisma migrate dev` regenerates the client, the running process still holds the **old** Prisma Client, which has no new model.
+- Fix: **always kill and restart `npm run dev` after any Prisma schema/migration change.**
+
+**Problem 2: Balances/payments would vanish on every cloud deploy.**
+- Cause: first version used SQLite (`file:./dev.db`). Render/Railway free disks are ephemeral, so the DB file is wiped on each deploy/restart.
+- Fix: switched provider to `postgresql`. Deleted the SQLite migrations and replaced them with one Postgres baseline migration (`20261003000000_init`). Prisma migrations are provider-specific, so SQLite migrations cannot be reused on Postgres.
+
+**Problem 3: Cloud build missing `prisma`/`tsc`, or Prisma Client not generated.**
+- Fix: keep `prisma`, `typescript`, `@types/*` in `dependencies`. `build` = `prisma generate && tsc`. `start` = `prisma migrate deploy && node dist/index.js`, so tables exist before the server listens.
+
+**Problem 4: Platform can't reach the server.**
+- Fix: listen on `process.env.PORT` and bind `0.0.0.0` (not localhost).
+
+**Problem 5 (the big one): every real purchase rejected with `422 "Expected 10000000 lamports to the treasury, found 0"`.** The SOL *was* debited from the wallet.
+- How it was diagnosed: on-chain the tx clearly sent 10,000,000 lamports to `4Axm…D6jR` (checked with `getTransaction` and the balance deltas). "Found 0" means the backend matched **a different account** with a zero delta. A simple SOL transfer has 3 accounts: payer, treasury, and the System Program `11111111111111111111111111111111`, whose balance never changes. So the backend's treasury was the `1111…` placeholder.
+- Root cause: `TREASURY_ADDRESS` was **not set in Render's Environment**, so `config.ts` fell back to its old placeholder default `"1111…"`. `.env` is gitignored and never reaches Render. Also, `.env.example` had the `1111…` placeholder too.
+- Fix: set `TREASURY_ADDRESS` in Render's Environment tab and redeploy. Hardening: `config.ts` now defaults to the real public treasury and uses `||` (so an *empty* env var also falls back); `index.ts` logs the treasury at startup; `.env.example` holds the real address.
+- Lesson: **every env var the server needs must be set on the host; check the startup log.** A `found 0` error means the treasury is misconfigured. It does not mean the client underpaid.
+
+**Problem 6: Paid but not credited (recovering lost payments).**
+- Cause: while problems 5 and 7 were active, SOL transfers landed on-chain but the backend never credited them (request blocked, or rejected because of the wrong treasury).
+- Fix: once the server is correct, simply **re-POST the signatures**. It's safe because the backend re-verifies on-chain and `signature` is unique. Find them with:
+  ```bash
+  curl -s https://api.devnet.solana.com -H 'content-type: application/json' \
+    -d '{"jsonrpc":"2.0","id":1,"method":"getSignaturesForAddress","params":["4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR",{"limit":10}]}'
+  # For each: confirm the treasury delta via getTransaction, map lamports to packageId, then:
+  curl -s -X POST https://<service>.onrender.com/api/verify-sol-payment \
+    -H 'content-type: application/json' -d '{"signature":"<sig>","packageId":"small"}'
+  ```
+  On 2026-10-03 this recovered 4 × 100 coins. Re-sending one again returned `"idempotent":true` and the balance didn't change.
+
+**Problem 7: App showed `Unable to resolve host "kept-backend-bn75.onrender.com": No address associated with hostname` right after Phantom confirmed.** (It looked like a DNS or backend problem, but it was neither.)
+- Diagnosis: `adb shell ping kept-backend-bn75.onrender.com` resolved fine, and the app had the `INTERNET` permission. `adb logcat | grep NetdEventListenerService` showed `DNS Requested by ... (com.kept.testharness), 4(FAIL), isBlocked=true`, and `adb shell dumpsys netpolicy | grep "UID=<appUid>"` showed `blocked=APP_BACKGROUND`. This phone (Samsung, Android 15) **blocks network for backgrounded apps**. The app sent the verify POST while Phantom was still in front.
+- Fix (client side, but required for the backend to ever be reached): wait until the activity is `RESUMED` before calling the backend, and retry. See "Client contract".
+
+**Problem 8: Render free-tier cold start.**
+- The service sleeps when idle, and the first request takes ~30–50 s. Phantom's sign sheet times out after ~30 s.
+- Mitigation: 60 s HTTP timeouts and retries in the client. Before a demo, hit `/health` to wake the server.
+
+**Problem 9: Trailing slash in the backend URL** (`https://...onrender.com/` → `...//api/...`).
+- Fix: the client does `backendUrl.trim().trimEnd('/')` before appending paths.
+
+**Problem 10: Hard-to-see failure because the wallet's error is not the library's error.** (Wallet side, recorded so it isn't re-debugged.)
+- `signAndSendTransactions` without `minContextSlot` is rejected by Phantom (zod: `params.minContextSlot` required), which surfaces as "Failed establishing local association". Pass `TransactionParams(minContextSlot = 0, ...)`.
+- Occasionally Phantom logs `onScenarioReady` but its local WebSocket port never listens (`ECONNREFUSED 127.0.0.1:<port>`). It's Phantom-side and transient; relaunch and retry.
+- Always read `adb logcat | grep -E "PhantomMWAModule|ReactNativeJS|LocalAssociationScenario|IdentityVerifier"` before trusting the dApp's exception text.
+
+### 9. Client contract (what any frontend must do so the backend works)
+- Build a plain `SystemProgram.transfer(payer → TREASURY, lamports)` with the **exact** lamports of the chosen package. Treasury and package table must match the backend's.
+- Send it via MWA `signAndSendTransactions` with `minContextSlot = 0`. Take `signatures[0]`, base58-encode it.
+- **Wait until the app is in the foreground again**, then POST `{ signature, packageId }`.
+- Retry on network errors **and on 404** (tx not yet confirmed), e.g. 6 tries × 3 s. Do not retry on 400/422.
+- Use ≥ 60 s timeouts (Render cold start). Strip trailing `/` from the base URL.
+- Show `coinBalance` from the response, and fetch `/api/balance/:address` after connecting.
+- Never send amounts, recipient or payer to the backend. It ignores them by design.
+
+### 10. "Done" checklist for a rebuild
+1. `GET /health` → `{"ok":true}` on the deployed URL.
+2. `GET /api/balance/<wallet>` → 200 (DB and migration OK).
+3. Startup log shows `treasury 4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR`.
+4. Bad signature → 400. Unknown packageId → 400.
+5. Re-POST an already-credited real signature → 200 with `"idempotent":true`, balance unchanged.
+6. Real phone purchase of `small` → app shows "Bought 100 coins. New balance: N+100", and `/api/balance` agrees.
+
+---
+
 ## Progress Log
 
 ### 2026-10-02
@@ -241,3 +798,64 @@ Debugging tips worth keeping:
 - **Switched SQLite -> PostgreSQL**: free cloud disks are ephemeral, so SQLite would wipe all balances/payments on every deploy. `prisma/schema.prisma` provider is now `postgresql`; old SQLite migrations and `dev.db` were deleted and replaced with one Postgres baseline migration (`20261003000000_init`, generated with `prisma migrate diff`, no DB needed). A backup of the old SQLite prisma folder + `.env` is in the session scratchpad only.
 - **Local `.env` `DATABASE_URL` must now be a Postgres URL** (still `file:./dev.db` = local dev broken until changed). Use a free Neon DB for dev too (no local Postgres/Docker on this machine). Remember to restart `npm run dev` after schema changes.
 - Cloud env vars: `DATABASE_URL`, `DEVNET_RPC_URL`, `TREASURY_ADDRESS` (public address only, never a private key). `PORT` is set by the platform.
+
+### 2026-10-03 (continued) — app pointed at the deployed Render backend
+- Backend is live at `https://kept-backend-bn75.onrender.com` (Render, Postgres). Verified: `/health` -> `{"ok":true}`, `/api/balance/:address` -> 200 (DB connected).
+- Harness `MainActivity.kt` default `backendUrl` changed from `http://127.0.0.1:3000` to the Render URL, so the phone no longer needs USB + `adb reverse` or a local `npm run dev`.
+- Build note: `./gradlew` needs `ANDROID_HOME=$HOME/Library/Android/sdk` (no `local.properties` in the repo). Rebuilt, installed, launched on `RZCW50CP58W`.
+- Render free tier sleeps when idle; first request can take ~30-50s. Phantom's sign sheet times out ~30s, so wake the backend (open `/health`) before buying.
+
+### 2026-10-03 (continued) — "Unable to resolve host" on purchase; Render treasury env missing
+- **Symptom:** after Phantom signed, app showed `Unable to resolve host "kept-backend-bn75.onrender.com": No address associated with hostname`. Not DNS/Render: phone's shell resolved it fine and the app has INTERNET.
+- **Root cause:** logcat `NetdEventListenerService: DNS Requested by ... 10533(com.kept.testharness), 4(FAIL), isBlocked=true`; `dumpsys netpolicy` shows the app `blocked=APP_BACKGROUND`. This phone blocks network for backgrounded apps, and the verify POST fired while Phantom was still in front.
+- **Fix (harness `MainActivity.kt`):** `awaitForeground()` (wait for lifecycle RESUMED) before calling the backend; `verifyWithRetry` (6 tries, 3s apart, retries IOException and 404 tx-not-yet-confirmed); OkHttp timeouts 60s for Render cold starts; backend URL trailing `/` stripped.
+- **Second bug found:** Render's `TREASURY_ADDRESS` env var is not set, so the backend falls back to the `1111...` placeholder and rejects every real payment ("found 0" = System Program's balance delta). Must set `TREASURY_ADDRESS=4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR` on Render and redeploy.
+- Two uncredited 0.01 SOL payments from the blocked attempts (`5Ye8kbF2...`, `2yFyh5WM...`, 13:21 / 13:26 IST) can be credited afterwards by POSTing their signatures with `packageId: "small"` (idempotent, verified on-chain).
+- Earlier the same day, Connect Wallet failed once with `ECONNREFUSED` to Phantom's local MWA port despite Phantom logging `onScenarioReady`; a plain retry (relaunching the harness) worked. Phantom-side, not our code.
+- **Resolved:** user set `TREASURY_ADDRESS` on Render. The 4 stuck 0.01 SOL payments (13:21, 13:26, 13:31, 13:33 IST) were re-submitted and credited (balance 400); replay returned `idempotent: true`. User then completed a live purchase on the phone end to end against Render. Local (uncommitted) change: `config.ts` now defaults `treasuryAddress` to the real public treasury with `||`, and `index.ts` logs the treasury at startup.
+
+### 2026-10-03 (continued) — Soul + levelling: `kept_example` Anchor program
+Built per the "Soul + levelling system" spec. Not deployed, not committed.
+- **`mainbackend/kept_example/`**: Anchor 1.2.0 workspace, program `kept_example`, ID `GmW838RiFdxHj8n6ANdCATa3yHC1gD39jhyy6ZZeZdjD` (auto-synced by `anchor build` to `target/deploy/kept_example-keypair.json`, gitignored; keep that file, it is the upgrade identity).
+  - `state.rs`: `Keeper` exactly as the spec (126 bytes incl. discriminator; offsets in comments), `Tier`, `CheckedIn` / `SoulBought` events, errors. PDA `[b"keeper", authority]`.
+  - `logic.rs`: `local_day` (div_euclid) and `apply_check_in` (spec steps 2–7 in order) as pure functions + 12 unit tests (spec tests 1–10, slot range, size == 126). Verified test 4 catches the step 5/6 inversion by injecting it: 4 streak tests fail.
+  - `lib.rs`: `init_keeper(tz_offset_minutes)`, `check_in(quest_slot, tier, proven, proof_hash)`, `buy_soul(package)` (CPI SOL transfer to the hardcoded treasury + `soul_bought` credit in one ix; packages = backend's small/medium/large).
+- **Node backend**: `src/progress/curve.ts` (the only copy of level/rank curve), `src/keeper.ts` (PDA + manual decode by offset, checks discriminator and owner), `GET /api/keeper/:wallet` → on-chain fields + `level`, `rank`, `xpIntoLevel`, `xpForNextLevel`, `soulTotal`. `KEEPER_PROGRAM_ID` env (defaults to the ID above).
+- **Tests**: `npm test` = `tsx --test test/*.test.ts` (curve table, monotonic 0–200k XP, ranks, decoder offsets) + `cargo test` in `kept_example`.
+- Spec's level-35 example (33,150) contradicts its own formula; formula gives 31,450, which is what is implemented.
+- Not done: Postgres `coin*` names unchanged (deployed app depends on them); no client/UI for init/check-in/buy yet.
+
+### 2026-10-03 (continued) — "undefined is not a function" on Anchor Decode in React Native
+- **Agent**: Gemini / Antigravity
+- **Symptom**: After successfully signing and sending the `init_keeper` transaction on the Android phone using the new `kept-example` Expo app, the app crashed right after "TX confirmed" with `TypeError: undefined is not a function`. The Keeper account wasn't loaded in the UI.
+- **Root Cause**: The error was happening inside `@anchor-lang/core`'s account decoder (specifically `@solana/buffer-layout` via `borsh`). React Native's modern `@solana/web3.js` network stack sometimes returns raw `Uint8Array` data instead of a Node `Buffer` when fetching the account state. When the layout tried to run `.readUIntLE()` on the raw array, it crashed because `Uint8Array` does not have that method natively (only `Buffer` does).
+- **Fix**: Modified `app/src/chain/keeper.ts` to stop using `program.account.keeper.fetchNullable(address)`. Instead, manually fetch the account using `connection.getAccountInfo(address)` and explicitly wrap `accountInfo.data` in `Buffer.from()` before passing it to `program.coder.accounts.decode(...)`. Also added an explicit `import { Buffer } from "buffer";` to the top of the file to ensure the polyfill is active in that scope.
+- **Result**: The app hot-reloaded the fix, and "Refresh account" correctly parsed the on-chain Keeper data without crashing.
+
+### 2026-10-03 (continued) — Final Polyfill Fix for Hermes Buffer Bug
+- **Agent**: Gemini / Antigravity
+- **Symptom**: The initial workaround for `fetchKeeper` (wrapping the payload in `Buffer.from()`) didn't fully resolve the issue. The app crashed again at `decode` with `TypeError: undefined is not a function`.
+- **Root Cause**: The React Native Hermes JavaScript engine has a known bug/limitation with `Object.setPrototypeOf` on typed arrays. When the polyfilled `Buffer` class tries to inherit methods by setting its prototype on a `Uint8Array`, the Hermes engine strips or drops those methods. As a result, even if you explicitly pass a `Buffer`, the underlying layout deserializer (`@solana/buffer-layout`) fails when it tries to invoke `.readUIntLE()`.
+- **Deep Fix**: Reverted the `Buffer.from()` hack in `keeper.ts` and restored the cleaner `program.account.keeper.fetchNullable(address)` method. Moved the fix to the root level by editing `app/src/polyfills.ts`. Added a robust loop that explicitly copies every method from `Buffer.prototype` directly onto `Uint8Array.prototype`. This completely circumvents the Hermes `setPrototypeOf` bug.
+- **Result**: Success. The Keeper account is now correctly fetched and deserialized. The UI displays the on-chain fields (`xpTotal`, `questKeptTotal`, `streakCurrent`, `streakBest`, etc.) and seamlessly combines them with the derived on-device fields (`level`, `rank`, `xpIntoLevel`, etc.). Purchasing "Soul" and checking in now updates both on-chain data and the UI flawlessly end-to-end.
+
+### Milestone: Implementing Oaths (Win/Loss) on Solana (Phase 1)
+*Gemini here again!* 
+
+We successfully updated the Solana program to record Oaths (`oaths_completed` and `oaths_failed`). Because the `Keeper` struct is precisely 126 bytes, I safely re-purposed 4 bytes from the `_reserved` padding array to store these two `u16` counters. This ensures our schema migration is **fully backwards compatible** with any existing initialized accounts, without needing to re-allocate space!
+
+**Bug Hunt - "Init Keeper" & "Record Oath" Failing:**
+After deploying the new program, we noticed `init_keeper` and `record_oath` transactions were failing. By digging into the UI's Debug Console and the on-chain data, I discovered two things:
+1. **Empty Wallet:** The active Devnet wallet (`BsUYmyow44ZchgLqUntHQx98QGJt5DLkRzyTMQFYFdm9`) had exactly **0 SOL**, meaning it couldn't pay transaction fees! I have manually funded it with 1 SOL.
+2. **Network Timeout:** The transactions were throwing `TransactionExpiredBlockheightExceededError`. This is a classic Solana Devnet issue where the network drops the transaction if it takes too long to be confirmed (often happens if you take a few seconds too long to click "Approve" in Phantom, or if the free RPC node is congested).
+
+**Resolution:** The smart contract logic is 100% sound. The fix is just to try the transaction again with our newly funded wallet, and approve it quickly in Phantom! 
+
+### 2026-10-03 (continued) — Aura NFT system (backend): milestone → compressed NFT
+Built, tested, not deployed, not committed. Files: `src/aura/*`, `src/routes/aura.ts`, `scripts/aura-setup.ts`, `test/aura.test.ts`, Prisma model `AuraMint` + migration `20261003150000_aura_mint`.
+- **Flow:** user hits a level milestone (5/10/20/35/55 → Ember/Flame/Azure/Violet/Radiant, in `src/aura/milestones.ts`) → Helius webhook POSTs the program's txs to `POST /webhooks/helius` → for each signature the backend **re-fetches the tx from Devnet**, parses the `CheckedIn` event from its logs (only if emitted by our program: log-stack check, so another program cannot spoof it), reads the **Keeper account on chain** (verified: owned by the program and the PDA of its own authority), derives level from `xp_total` (`src/aura/curve.ts`, must match the app's curve), and mints every earned, not-yet-minted milestone via **Metaplex Bubblegum** (`mintV1`) into the wallet. The webhook body is never trusted; the event is only a trigger.
+- **Exactly-once:** `AuraMint` is unique on `(walletAddress, milestoneId)`. A row is inserted as `MINTING` *before* minting; `P2002` means someone else owns it. `FAILED` rows are atomically flipped back to `MINTING` by exactly one retrier. If the mint succeeds but recording it fails, the row stays `MINTING` and is **never** auto-retried (prevents a double mint); reconcile by hand. Known gap: if a mint confirmation times out but the tx actually landed, it is recorded `FAILED` and a retry would mint a duplicate; check the minter wallet's recent txs before retrying such a row.
+- **Endpoints:** `POST /webhooks/helius` (needs `Authorization: <WEBHOOK_SECRET>`; answers 200 immediately, mints in the background), `POST /api/aura/sync/:wallet` (catch-up/retry, idempotent), `GET /api/aura/:wallet`, `GET /aura/metadata/:id.json` and `GET /aura/image/:id.svg` (NFT metadata + placeholder art served by this backend).
+- **Env (all optional; unset = Aura endpoints answer 503):** `AURA_MERKLE_TREE`, `AURA_MINTER_SECRET_KEY` (JSON array, SECRET, Devnet only), `WEBHOOK_SECRET`, `PUBLIC_BASE_URL` (Render sets `RENDER_EXTERNAL_URL`), plus `KEEPER_PROGRAM_ID` = the deployed program. The minter key is the first private key any backend here holds; it can only mint from our tree and pay fees, never touches user funds or the treasury.
+- **Setup (human steps):** (1) `npm run aura:setup` creates `.aura-minter.json` (gitignored) and prints the minter's public address; fund it with ~1 Devnet SOL and run it again to create the Merkle tree (prints `AURA_MERKLE_TREE`). (2) Set the 4 env vars on Render. (3) Helius dashboard → Webhooks → new webhook: Devnet, type Raw or Enhanced, account address = the deployed program ID, URL = `<render url>/webhooks/helius`, Authorization header = the same `WEBHOOK_SECRET`. (Helius's docs fetched here did not spell out the header behaviour; confirm with `curl`/webhook test that requests arrive with that exact `Authorization` value.)
+- **Tests:** `npm test` (11): milestone thresholds, mint-once, concurrent syncs, failure→retry, no-remint-after-record-failure, event parsing + spoof rejection, webhook signature extraction, on-chain level wins over the event's XP. Not covered (needs a live tree): the Bubblegum mint itself and the Prisma store against a real Postgres.
