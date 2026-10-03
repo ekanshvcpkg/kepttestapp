@@ -44,5 +44,12 @@ assetlinksRouter.get("/.well-known/assetlinks.json", (req, res) => {
     accept: String(req.header("accept") ?? ""),
     enc: String(req.header("accept-encoding") ?? ""),
   });
-  res.set("Cache-Control", "public, max-age=300").status(200).json(assetLinks);
+  // Send the file UNCOMPRESSED. The wallet's HTTP client advertises "Accept-Encoding: gzip, br" but
+  // cannot read the Brotli/gzip body the CDN (Cloudflare, in front of Render) would return, so it
+  // sees garbage instead of JSON and reports "could not verify package". `no-transform` tells the
+  // CDN not to re-encode; an explicit `Content-Encoding: identity` makes that unambiguous.
+  res
+    .set({ "Cache-Control": "public, max-age=300, no-transform", "Content-Encoding": "identity" })
+    .status(200)
+    .json(assetLinks);
 });
