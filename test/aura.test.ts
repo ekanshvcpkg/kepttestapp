@@ -190,3 +190,12 @@ test("secret key parses with or without brackets, and rejects bad input", () => 
   assert.throws(() => parseSecretKey("not a key"));
   assert.throws(() => parseSecretKey(JSON.stringify([...nums.slice(1), 300])));
 });
+
+import { assetLinks } from "../src/routes/assetlinks.js";
+
+test("assetlinks.json lists our app with a well-formed SHA-256 fingerprint", () => {
+  const entry = assetLinks.find((e) => e.target.package_name === "com.kept.backendtest");
+  assert.ok(entry, "com.kept.backendtest must be listed");
+  assert.deepEqual(entry.relation, ["delegate_permission/common.handle_all_urls"]);
+  for (const fp of entry.target.sha256_cert_fingerprints) assert.match(fp, /^([0-9A-F]{2}:){31}[0-9A-F]{2}$/);
+});
