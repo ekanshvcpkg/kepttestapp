@@ -32,7 +32,17 @@ export const assetLinks = TARGETS.map((t) => ({
 
 export const assetlinksRouter = Router();
 
+// TEMPORARY DIAGNOSTIC (remove): who fetches the file, and how.
+const hits: Array<{ at: string; ua: string; accept: string; enc: string }> = [];
+assetlinksRouter.get("/.well-known/_hits", (_req, res) => res.json(hits.slice(-30)));
+
 // Must be served over HTTPS, as JSON, with no redirect.
-assetlinksRouter.get("/.well-known/assetlinks.json", (_req, res) => {
+assetlinksRouter.get("/.well-known/assetlinks.json", (req, res) => {
+  hits.push({
+    at: new Date().toISOString(),
+    ua: String(req.header("user-agent") ?? ""),
+    accept: String(req.header("accept") ?? ""),
+    enc: String(req.header("accept-encoding") ?? ""),
+  });
   res.set("Cache-Control", "public, max-age=300").status(200).json(assetLinks);
 });
