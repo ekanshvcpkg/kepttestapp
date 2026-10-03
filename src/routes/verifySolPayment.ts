@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { RequestHandler, Router } from "express";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { config, coinPackages } from "../config.js";
@@ -6,10 +6,21 @@ import { verifyTransactionOnChain } from "../solana.js";
 
 export const verifySolPaymentRouter = Router();
 
+// Express 4 does not catch errors thrown inside async handlers: an RPC or database failure
+// would become an unhandled rejection and crash the whole process. Catch, log, answer 502.
+const safe =
+  (handler: RequestHandler): RequestHandler =>
+  (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch((e) => {
+      console.error(`[${req.method} ${req.path}]`, e instanceof Error ? e.message : e);
+      if (!res.headersSent) res.status(502).json({ error: "Temporary upstream error, please retry" });
+    });
+  };
+
 // Base58, no 0/O/I/l. Solana signatures are typically 87-88 chars; allow some slack.
 const SIGNATURE_RE = /^[1-9A-HJ-NP-Za-km-z]{64,90}$/;
 
-verifySolPaymentRouter.post("/api/verify-sol-payment", async (req, res) => {
+verifySolPaymentRouter.post("/api/verify-sol-payment", safe(async (req, res) => {
   const { signature, packageId } = req.body ?? {};
 
   if (typeof signature !== "string" || !SIGNATURE_RE.test(signature)) {
@@ -90,9 +101,9 @@ verifySolPaymentRouter.post("/api/verify-sol-payment", async (req, res) => {
     }
     throw e;
   }
-});
+}));
 
-verifySolPaymentRouter.get("/api/balance/:address", async (req, res) => {
+verifySolPaymentRouter.get("/api/balance/:address", safe(async (req, res) => {
   const user = await prisma.user.findUnique({ where: { walletAddress: req.params.address } });
   return res.status(200).json({ address: req.params.address, coinBalance: user?.coinBalance ?? 0 });
-});
+}));
