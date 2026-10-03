@@ -178,3 +178,15 @@ test("syncKeeper reports the level it derived", async () => {
   assert.equal(r.level, 35);
   assert.equal(r.outcomes.length, 4);
 });
+
+import { parseSecretKey } from "../src/aura/minter.js";
+
+test("secret key parses with or without brackets, and rejects bad input", () => {
+  const nums = Array.from({ length: 64 }, (_, i) => i);
+  assert.equal(parseSecretKey(JSON.stringify(nums)).length, 64);
+  assert.equal(parseSecretKey(nums.join(",")).length, 64);
+  assert.equal(parseSecretKey(`  ${nums.join(", ")}\n`).length, 64);
+  assert.throws(() => parseSecretKey("1,2,3"));
+  assert.throws(() => parseSecretKey("not a key"));
+  assert.throws(() => parseSecretKey(JSON.stringify([...nums.slice(1), 300])));
+});

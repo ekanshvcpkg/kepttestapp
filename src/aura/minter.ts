@@ -14,13 +14,23 @@ export function auraConfigured(): boolean {
   return Boolean(config.auraMerkleTree && config.auraMinterSecretKey && config.publicBaseUrl);
 }
 
+/** Accepts the key as `[1,2,3]` (the file's contents) or `1,2,3` (brackets lost when pasted). */
+export function parseSecretKey(raw: string): Uint8Array {
+  const text = raw.trim();
+  const bytes = JSON.parse(text.startsWith("[") ? text : `[${text}]`) as unknown;
+  if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) {
+    throw new Error("AURA_MINTER_SECRET_KEY must be 64 numbers (0-255), as in .aura-minter.json");
+  }
+  return Uint8Array.from(bytes);
+}
+
 export function metadataUri(milestoneId: string): string {
   return `${config.publicBaseUrl}/aura/metadata/${milestoneId}.json`;
 }
 
 export function createBubblegumMinter(): AuraMinter {
   const umi = createUmi(config.devnetRpcUrl).use(mplBubblegum());
-  const keypair = umi.eddsa.createKeypairFromSecretKey(Uint8Array.from(JSON.parse(config.auraMinterSecretKey)));
+  const keypair = umi.eddsa.createKeypairFromSecretKey(parseSecretKey(config.auraMinterSecretKey));
   umi.use(keypairIdentity(keypair));
   const merkleTree = publicKey(config.auraMerkleTree);
 
