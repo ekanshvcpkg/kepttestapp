@@ -1,0 +1,38 @@
+{
+  "name": "kept-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "prisma generate && tsc -p tsconfig.json",
+    "start": "prisma migrate deploy && node dist/index.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.1.0",
+    "@solana/web3.js": "^1.98.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.1",
+    "prisma": "^6.1.0",
+    "typescript": "^5.7.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "prisma@6.19.3": true,
+    "esbuild@0.28.2": true,
+    "bufferutil@4.1.0": true,
+    "utf-8-validate@6.0.6": true,
+    "utf-8-validate@5.0.10": true
+  }
+}

@@ -1,0 +1,31 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Unique on `signature` is the actual trustless guarantee: the same on-chain
+// SOL transfer can never be credited twice, even under concurrent requests.
+model Payment {
+  id              Int      @id @default(autoincrement())
+  signature       String   @unique
+  payerAddress    String
+  packageId       String
+  lamports        BigInt
+  coinsAwarded    Int
+  treasuryAddress String
+  verifiedAt      DateTime @default(now())
+}
+
+// Coin balance per wallet. Only ever mutated in the same DB transaction as a
+// Payment insert — a coin is never credited without a verified SOL payment
+// backing it, and that payment can never be double-counted (unique signature).
+model User {
+  id            Int      @id @default(autoincrement())
+  walletAddress String   @unique
+  coinBalance   Int      @default(0)
+  updatedAt     DateTime @updatedAt
+}
