@@ -28,18 +28,8 @@ export const assetLinks = TARGETS.map((t) => ({
 
 export const assetlinksRouter = Router();
 
-// TEMPORARY DIAGNOSTIC (remove): who fetches the file, and how.
-const hits: Array<{ at: string; ua: string; accept: string; enc: string }> = [];
-assetlinksRouter.get("/.well-known/_hits", (_req, res) => res.json(hits.slice(-30)));
-
 // Must be served over HTTPS, as JSON, with no redirect.
-assetlinksRouter.get("/.well-known/assetlinks.json", (req, res) => {
-  hits.push({
-    at: new Date().toISOString(),
-    ua: String(req.header("user-agent") ?? ""),
-    accept: String(req.header("accept") ?? ""),
-    enc: String(req.header("accept-encoding") ?? ""),
-  });
+assetlinksRouter.get("/.well-known/assetlinks.json", (_req, res) => {
   // Send the file UNCOMPRESSED. The wallet's HTTP client advertises "Accept-Encoding: gzip, br" but
   // cannot read the Brotli/gzip body the CDN (Cloudflare, in front of Render) would return, so it
   // sees garbage instead of JSON and reports "could not verify package". `no-transform` tells the
