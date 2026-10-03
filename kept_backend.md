@@ -1,5 +1,11 @@
 # Kept Backend — Build Log
 
+> **Superseded in part.** The current, complete handoff is **`BACKEND_PART_1.md`**. This file is the
+> older build log. Still valid here: the payment-verification design and the Node/Render rebuild guide.
+> **Obsolete here:** everything about `kept_example`, program ID `GmW838...` (never deployed),
+> `src/keeper.ts` and `GET /api/keeper/:wallet` (all removed), and the Express-side level curve notes.
+> The on-chain program is now `kept_test` (`6iXXBq...`). Do not rebuild from the obsolete parts.
+
 > **Claude: to rebuild or debug the backend, start at the "REBUILD GUIDE FOR CLAUDE (backend)" section below.** It has the exact source of every file, the Render deploy steps, and every problem we hit with its fix. It overrides the older design notes and the Progress Log where they disagree.
 
 > This file tracks the backend side of **Kept**, a native Android dApp for the

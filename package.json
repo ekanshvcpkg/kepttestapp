@@ -10,7 +10,6 @@
     "prisma:generate": "prisma generate",
     "aura:setup": "tsx scripts/aura-setup.ts",
     "test": "tsx --test test/*.test.ts",
-    "test": "tsx --test test/*.test.ts && cd kept_example && cargo test",
     "prisma:migrate": "prisma migrate dev --name init"
   },
   "engines": {

@@ -4,8 +4,8 @@ export const config = {
   // Public Devnet treasury address (safe to commit). Must match the app's TREASURY_ADDRESS.
   // `||` (not `??`) so an empty env var on the host also falls back to it.
   treasuryAddress: process.env.TREASURY_ADDRESS || "4AxmDUCWpC8F1aGL6ZsgyJoHfM3FDcK3AMbgMmcjD6jR",
-  // The kept_example Anchor program (mainbackend/kept_example) that stores Keeper XP / Soul.
-  keeperProgramId: process.env.KEEPER_PROGRAM_ID || "GmW838RiFdxHj8n6ANdCATa3yHC1gD39jhyy6ZZeZdjD",
+  // The deployed `kept_test` Anchor program (Devnet) that stores Keeper XP / Soul. Aura watches it.
+  keeperProgramId: process.env.KEEPER_PROGRAM_ID || "6iXXBqsdiCnUTSVf8CW3Uuw8c7iYvZSj5haz64QMuMUh",
   // --- Aura (compressed NFT) minting. All optional: unset = Aura endpoints answer 503. ---
   // Merkle tree created by `npm run aura:setup`.
   auraMerkleTree: process.env.AURA_MERKLE_TREE || "",
