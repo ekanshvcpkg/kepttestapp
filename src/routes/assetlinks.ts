@@ -30,10 +30,10 @@ export const assetlinksRouter = Router();
 
 // Must be served over HTTPS, as JSON, with no redirect.
 assetlinksRouter.get("/.well-known/assetlinks.json", (_req, res) => {
-  // Send the file UNCOMPRESSED. The wallet's HTTP client advertises "Accept-Encoding: gzip, br" but
-  // cannot read the Brotli/gzip body the CDN (Cloudflare, in front of Render) would return, so it
-  // sees garbage instead of JSON and reports "could not verify package". `no-transform` tells the
-  // CDN not to re-encode; an explicit `Content-Encoding: identity` makes that unambiguous.
+  // Sent UNCOMPRESSED on purpose. Phantom's client advertises "Accept-Encoding: gzip, br" and the CDN in
+  // front of Render would otherwise answer with Brotli. This was tried as a fix for Phantom's identity
+  // check and did NOT change the result (see BACKEND_PART_1.md P40); it is kept because a plain body is
+  // the safest thing to serve to a parser we cannot inspect.
   res
     .set({ "Cache-Control": "public, max-age=300, no-transform", "Content-Encoding": "identity" })
     .status(200)
