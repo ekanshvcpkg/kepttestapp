@@ -54,7 +54,7 @@ if (!configInfo) {
   instruction = new TransactionInstruction({ programId, keys: [
     { pubkey: configPda, isSigner: false, isWritable: true }, { pubkey: admin.publicKey, isSigner: true, isWritable: true },
     { pubkey: programData, isSigner: false, isWritable: false }, { pubkey: mint, isSigner: false, isWritable: false },
-    { pubkey: treasury.address, isSigner: false, isWritable: false }, { pubkey: tokenProgram, isSigner: false, isWritable: false },
+    { pubkey: treasury.address, isSigner: false, isWritable: true }, { pubkey: tokenProgram, isSigner: false, isWritable: false },
     { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
   ], data: Buffer.concat([configDisc, admin.publicKey.toBuffer(), fee]) });
 } else {

@@ -37,21 +37,21 @@ Oath terms and token custody are enforced by the program. Goal text is stored by
 cd kept-example/program
 npm install
 rm -f target/deploy/kept_test.so
-cargo build-sbf --tools-version v1.57 --arch v3 --sbf-out-dir target/deploy
+cargo build-sbf --tools-version v1.57 --arch v2 --sbf-out-dir target/deploy
 npm test
 cargo test -p kept_test
 ```
 
-The release profile optimizes for smaller bytecode (`opt-level = "z"`). The
-SBPFv3 target matches the architecture currently running on Devnet. For a
-build that rejects the short-day debug setting:
+The release profile optimizes for smaller bytecode (`opt-level = "z"`). Use
+SBPFv2 for current Devnet deployments; the SBPFv3 artifact fails the cluster's
+feature verification. For a build that rejects the short-day debug setting:
 
 ```bash
 rm -f target/deploy/kept_test.so
-cargo build-sbf --tools-version v1.57 --arch v3 --sbf-out-dir target/deploy --no-default-features --features init-if-needed
+cargo build-sbf --tools-version v1.57 --arch v2 --sbf-out-dir target/deploy --no-default-features --features init-if-needed
 ```
 
-The checked-in program ID is `6iXXBqsdiCnUTSVf8CW3Uuw8c7iYvZSj5haz64QMuMUh`. Preserve the existing `target/deploy/kept_test-keypair.json`; it must resolve to this program ID. Upgrade using the on-chain upgrade authority. Do not generate a replacement program keypair.
+The checked-in program ID is `6iXXBqsdiCnUTSVf8CW3Uuw8c7iYvZSj5haz64QMuMUh`. Preserve the existing `target/deploy/kept_test-keypair.json`; it must resolve to this program ID. Upgrade using the on-chain upgrade authority. Do not generate a replacement program keypair. The current Devnet accepts the SBPFv2 build; use that target for deployments.
 
 ## Create Devnet token/config
 
