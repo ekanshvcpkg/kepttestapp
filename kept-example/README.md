@@ -36,18 +36,22 @@ Oath terms and token custody are enforced by the program. Goal text is stored by
 ```bash
 cd kept-example/program
 npm install
-anchor build --arch v2
+rm -f target/deploy/kept_test.so
+cargo build-sbf --tools-version v1.57 --arch v3 --sbf-out-dir target/deploy
 npm test
 cargo test -p kept_test
 ```
 
-For production-like builds, exclude the short-day debug feature:
+The release profile optimizes for smaller bytecode (`opt-level = "z"`). The
+SBPFv3 target matches the architecture currently running on Devnet. For a
+build that rejects the short-day debug setting:
 
 ```bash
-anchor build --arch v2 -- --no-default-features --features init-if-needed
+rm -f target/deploy/kept_test.so
+cargo build-sbf --tools-version v1.57 --arch v3 --sbf-out-dir target/deploy --no-default-features --features init-if-needed
 ```
 
-The checked-in program ID is `6iXXBqsdiCnUTSVf8CW3Uuw8c7iYvZSj5haz64QMuMUh`. Preserve the program keypair and deploy/upgrade using its existing upgrade authority. `anchor build` creates the local keypair if it is absent; it must correspond to the deployed program to upgrade it.
+The checked-in program ID is `6iXXBqsdiCnUTSVf8CW3Uuw8c7iYvZSj5haz64QMuMUh`. Preserve the existing `target/deploy/kept_test-keypair.json`; it must resolve to this program ID. Upgrade using the on-chain upgrade authority. Do not generate a replacement program keypair.
 
 ## Create Devnet token/config
 
