@@ -1,0 +1,1400 @@
+{
+  "address": "6iXXBqsdiCnUTSVf8CW3Uuw8c7iYvZSj5haz64QMuMUh",
+  "metadata": {
+    "name": "kept_test",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "kept backend test: Keeper XP, streak and Soul on Solana"
+  },
+  "instructions": [
+    {
+      "name": "cancel_oath",
+      "discriminator": [
+        221,
+        106,
+        221,
+        70,
+        20,
+        240,
+        219,
+        24
+      ],
+      "accounts": [
+        {
+          "name": "oath",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "oath"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim",
+      "discriminator": [
+        62,
+        198,
+        214,
+        193,
+        213,
+        159,
+        108,
+        210
+      ],
+      "accounts": [
+        {
+          "name": "oath",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "oath"
+              }
+            ]
+          }
+        },
+        {
+          "name": "stake_mint"
+        },
+        {
+          "name": "destination",
+          "writable": true
+        },
+        {
+          "name": "member",
+          "signer": true
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_oath",
+      "discriminator": [
+        18,
+        53,
+        143,
+        138,
+        106,
+        66,
+        255,
+        195
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oath",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  111,
+                  97,
+                  116,
+                  104
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "arg",
+                "path": "oath_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "oath"
+              }
+            ]
+          }
+        },
+        {
+          "name": "keeper",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  107,
+                  101,
+                  101,
+                  112,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "stake_mint"
+        },
+        {
+          "name": "creator_token",
+          "writable": true
+        },
+        {
+          "name": "treasury"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "oath_id",
+          "type": "u64"
+        },
+        {
+          "name": "goal_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "object_id",
+          "type": "u8"
+        },
+        {
+          "name": "num_days",
+          "type": "u8"
+        },
+        {
+          "name": "day_seconds",
+          "type": "u32"
+        },
+        {
+          "name": "tz_offset_minutes",
+          "type": "i16"
+        },
+        {
+          "name": "stake_amount",
+          "type": "u64"
+        },
+        {
+          "name": "is_solo",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "initialize_config",
+      "discriminator": [
+        208,
+        127,
+        21,
+        1,
+        194,
+        190,
+        196,
+        70
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "program_data",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  84,
+                  237,
+                  193,
+                  229,
+                  43,
+                  49,
+                  50,
+                  194,
+                  159,
+                  15,
+                  109,
+                  76,
+                  51,
+                  160,
+                  166,
+                  94,
+                  45,
+                  125,
+                  204,
+                  239,
+                  48,
+                  52,
+                  53,
+                  111,
+                  49,
+                  226,
+                  172,
+                  20,
+                  149,
+                  115,
+                  142,
+                  22
+                ]
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                2,
+                168,
+                246,
+                145,
+                78,
+                136,
+                161,
+                176,
+                226,
+                16,
+                21,
+                62,
+                247,
+                99,
+                174,
+                43,
+                0,
+                194,
+                185,
+                61,
+                22,
+                193,
+                36,
+                210,
+                192,
+                83,
+                122,
+                16,
+                4,
+                128,
+                0,
+                0
+              ]
+            }
+          }
+        },
+        {
+          "name": "stake_mint"
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "verifier",
+          "type": "pubkey"
+        },
+        {
+          "name": "fee_bps",
+          "type": "u16"
+        }
+      ]
+    },
+    {
+      "name": "join_oath",
+      "discriminator": [
+        108,
+        162,
+        4,
+        168,
+        242,
+        190,
+        203,
+        191
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oath",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "oath"
+              }
+            ]
+          }
+        },
+        {
+          "name": "keeper",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  107,
+                  101,
+                  101,
+                  112,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "member"
+              }
+            ]
+          }
+        },
+        {
+          "name": "member",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "stake_mint"
+        },
+        {
+          "name": "member_token",
+          "writable": true
+        },
+        {
+          "name": "treasury"
+        },
+        {
+          "name": "token_program"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "migrate_keeper",
+      "docs": [
+        "Converts a pre-V4 Keeper account in place; its old XP/Soul fields are no longer used."
+      ],
+      "discriminator": [
+        132,
+        129,
+        186,
+        90,
+        209,
+        51,
+        144,
+        167
+      ],
+      "accounts": [
+        {
+          "name": "keeper",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  107,
+                  101,
+                  101,
+                  112,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "keeper"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "record_checkin",
+      "discriminator": [
+        118,
+        204,
+        183,
+        163,
+        118,
+        202,
+        223,
+        127
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oath",
+          "writable": true
+        },
+        {
+          "name": "verifier",
+          "signer": true
+        },
+        {
+          "name": "member"
+        }
+      ],
+      "args": [
+        {
+          "name": "day_index",
+          "type": "u8"
+        },
+        {
+          "name": "proof_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "settle_oath",
+      "discriminator": [
+        130,
+        224,
+        126,
+        34,
+        251,
+        193,
+        4,
+        15
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "oath",
+          "writable": true
+        },
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "oath"
+              }
+            ]
+          }
+        },
+        {
+          "name": "treasury",
+          "writable": true
+        },
+        {
+          "name": "stake_mint"
+        },
+        {
+          "name": "token_program"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_oath",
+      "discriminator": [
+        57,
+        92,
+        72,
+        166,
+        98,
+        62,
+        238,
+        44
+      ],
+      "accounts": [
+        {
+          "name": "oath",
+          "writable": true
+        },
+        {
+          "name": "creator",
+          "signer": true,
+          "relations": [
+            "oath"
+          ]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_treasury",
+      "docs": [
+        "Move future protocol fees and rounding dust to a new Token or Token-2022 account.",
+        "The configured admin must authorize the change; the mint cannot change here."
+      ],
+      "discriminator": [
+        60,
+        16,
+        243,
+        66,
+        96,
+        59,
+        254,
+        131
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "admin",
+          "signer": true,
+          "relations": [
+            "config"
+          ]
+        },
+        {
+          "name": "stake_mint"
+        },
+        {
+          "name": "treasury"
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Config",
+      "discriminator": [
+        155,
+        12,
+        170,
+        224,
+        30,
+        250,
+        204,
+        130
+      ]
+    },
+    {
+      "name": "Keeper",
+      "discriminator": [
+        127,
+        221,
+        194,
+        46,
+        120,
+        73,
+        144,
+        77
+      ]
+    },
+    {
+      "name": "Oath",
+      "discriminator": [
+        222,
+        97,
+        48,
+        50,
+        185,
+        60,
+        175,
+        24
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "CheckinRecorded",
+      "discriminator": [
+        85,
+        10,
+        179,
+        25,
+        115,
+        87,
+        108,
+        127
+      ]
+    },
+    {
+      "name": "Claimed",
+      "discriminator": [
+        217,
+        192,
+        123,
+        72,
+        108,
+        150,
+        248,
+        33
+      ]
+    },
+    {
+      "name": "OathCancelled",
+      "discriminator": [
+        95,
+        188,
+        253,
+        104,
+        86,
+        243,
+        228,
+        77
+      ]
+    },
+    {
+      "name": "OathCreated",
+      "discriminator": [
+        165,
+        157,
+        51,
+        209,
+        94,
+        123,
+        115,
+        117
+      ]
+    },
+    {
+      "name": "OathJoined",
+      "discriminator": [
+        128,
+        108,
+        65,
+        75,
+        60,
+        224,
+        197,
+        138
+      ]
+    },
+    {
+      "name": "OathSettled",
+      "discriminator": [
+        23,
+        34,
+        180,
+        114,
+        77,
+        200,
+        168,
+        138
+      ]
+    },
+    {
+      "name": "OathStarted",
+      "discriminator": [
+        66,
+        37,
+        42,
+        239,
+        71,
+        76,
+        98,
+        25
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidFee",
+      "msg": "Fee basis points must be at most 10000"
+    },
+    {
+      "code": 6001,
+      "name": "WrongAdmin",
+      "msg": "Only the program upgrade authority may initialize Config"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidDays",
+      "msg": "Invalid oath duration"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidObject",
+      "msg": "Object id is not in the supported object list"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidTimezoneOffset",
+      "msg": "Timezone offset must be UTC-12 through UTC+14"
+    },
+    {
+      "code": 6005,
+      "name": "InvalidDayLength",
+      "msg": "Day length must be positive"
+    },
+    {
+      "code": 6006,
+      "name": "WrongMint",
+      "msg": "Stake mint does not match config or oath"
+    },
+    {
+      "code": 6007,
+      "name": "WrongTreasury",
+      "msg": "Treasury token account does not match config"
+    },
+    {
+      "code": 6008,
+      "name": "InvalidStake",
+      "msg": "Invalid solo or group stake configuration"
+    },
+    {
+      "code": 6009,
+      "name": "NotOpen",
+      "msg": "Oath is not open"
+    },
+    {
+      "code": 6010,
+      "name": "SoloOath",
+      "msg": "Oath is solo and cannot be joined"
+    },
+    {
+      "code": 6011,
+      "name": "Full",
+      "msg": "Oath has four members already"
+    },
+    {
+      "code": 6012,
+      "name": "AlreadyMember",
+      "msg": "Wallet is already a member"
+    },
+    {
+      "code": 6013,
+      "name": "NeedsMember",
+      "msg": "Group Oath needs at least one other member"
+    },
+    {
+      "code": 6014,
+      "name": "WrongVerifier",
+      "msg": "Only configured verifier can record check-ins"
+    },
+    {
+      "code": 6015,
+      "name": "NotActive",
+      "msg": "Oath is not active"
+    },
+    {
+      "code": 6016,
+      "name": "InvalidDay",
+      "msg": "Day index outside oath duration"
+    },
+    {
+      "code": 6017,
+      "name": "DayNotStarted",
+      "msg": "Check-in day has not started"
+    },
+    {
+      "code": 6018,
+      "name": "DayEnded",
+      "msg": "Check-in day has ended"
+    },
+    {
+      "code": 6019,
+      "name": "NotMember",
+      "msg": "Wallet is not an Oath member"
+    },
+    {
+      "code": 6020,
+      "name": "DuplicateCheckin",
+      "msg": "Check-in already recorded"
+    },
+    {
+      "code": 6021,
+      "name": "TooEarly",
+      "msg": "Oath cannot settle yet"
+    },
+    {
+      "code": 6022,
+      "name": "KeeperAccountsMissing",
+      "msg": "Missing Keeper account for a member"
+    },
+    {
+      "code": 6023,
+      "name": "BadKeeper",
+      "msg": "Bad Keeper account supplied"
+    },
+    {
+      "code": 6024,
+      "name": "VaultUnderfunded",
+      "msg": "Vault does not cover calculated payouts"
+    },
+    {
+      "code": 6025,
+      "name": "BadVault",
+      "msg": "Vault authority or mint is invalid"
+    },
+    {
+      "code": 6026,
+      "name": "BadOath",
+      "msg": "Oath account data is invalid"
+    },
+    {
+      "code": 6027,
+      "name": "NotSettled",
+      "msg": "Oath is not settled or cancelled"
+    },
+    {
+      "code": 6028,
+      "name": "AlreadyClaimed",
+      "msg": "Payout already claimed"
+    },
+    {
+      "code": 6029,
+      "name": "Overflow",
+      "msg": "Arithmetic overflow"
+    }
+  ],
+  "types": [
+    {
+      "name": "CheckinRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "day_index",
+            "type": "u8"
+          },
+          {
+            "name": "proof_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Claimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Config",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "verifier",
+            "type": "pubkey"
+          },
+          {
+            "name": "treasury",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee_bps",
+            "type": "u16"
+          },
+          {
+            "name": "stake_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Keeper",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "current_streak",
+            "type": "u16"
+          },
+          {
+            "name": "best_streak",
+            "type": "u16"
+          },
+          {
+            "name": "oaths_kept",
+            "type": "u32"
+          },
+          {
+            "name": "oaths_missed",
+            "type": "u32"
+          },
+          {
+            "name": "last_kept_day",
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          },
+          {
+            "name": "version_tag",
+            "type": {
+              "array": [
+                "u8",
+                8
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Member",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "staked",
+            "type": "bool"
+          },
+          {
+            "name": "days_kept",
+            "type": "u16"
+          },
+          {
+            "name": "claimed",
+            "type": "bool"
+          },
+          {
+            "name": "payout",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Oath",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "oath_id",
+            "type": "u64"
+          },
+          {
+            "name": "stake_amount",
+            "type": "u64"
+          },
+          {
+            "name": "mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "goal_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "object_id",
+            "type": "u8"
+          },
+          {
+            "name": "num_days",
+            "type": "u8"
+          },
+          {
+            "name": "day_seconds",
+            "type": "u32"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          },
+          {
+            "name": "tz_offset_minutes",
+            "type": "i16"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "OathStatus"
+              }
+            }
+          },
+          {
+            "name": "is_solo",
+            "type": "bool"
+          },
+          {
+            "name": "member_count",
+            "type": "u8"
+          },
+          {
+            "name": "members",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "Member"
+                  }
+                },
+                4
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OathCancelled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OathCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "oath_id",
+            "type": "u64"
+          },
+          {
+            "name": "is_solo",
+            "type": "bool"
+          },
+          {
+            "name": "stake_amount",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OathJoined",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          },
+          {
+            "name": "member",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OathSettled",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          },
+          {
+            "name": "fee",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OathStarted",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "oath",
+            "type": "pubkey"
+          },
+          {
+            "name": "start_ts",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "OathStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Active"
+          },
+          {
+            "name": "Settled"
+          },
+          {
+            "name": "Cancelled"
+          }
+        ]
+      }
+    }
+  ]
+}

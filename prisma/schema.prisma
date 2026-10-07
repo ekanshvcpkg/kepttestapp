@@ -7,43 +7,81 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Unique on `signature` is the actual trustless guarantee: the same on-chain
-// SOL transfer can never be credited twice, even under concurrent requests.
-model Payment {
-  id              Int      @id @default(autoincrement())
-  signature       String   @unique
-  payerAddress    String
-  packageId       String
-  lamports        BigInt
-  coinsAwarded    Int
-  treasuryAddress String
-  verifiedAt      DateTime @default(now())
+model SessionSeat {
+  id          Int      @id @default(autoincrement())
+  wallet      String   @unique
+  genesisMint String   @unique
+  createdAt   DateTime @default(now())
 }
 
-// Coin balance per wallet. Only ever mutated in the same DB transaction as a
-// Payment insert — a coin is never credited without a verified SOL payment
-// backing it, and that payment can never be double-counted (unique signature).
-model User {
-  id            Int      @id @default(autoincrement())
-  walletAddress String   @unique
-  coinBalance   Int      @default(0)
-  updatedAt     DateTime @updatedAt
+model OathInvite {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  oath      String
+  createdBy String
+  createdAt DateTime @default(now())
 }
 
-// One row per (wallet, milestone). The unique key is what makes an Aura mint exactly-once:
-// a second request for the same milestone cannot insert, so it cannot mint.
-// status: MINTING (claimed, mint in flight) | MINTED | FAILED (safe to retry).
-model AuraMint {
-  id            Int      @id @default(autoincrement())
-  walletAddress String
-  milestoneId   String
-  levelAtMint   Int
-  status        String
-  assetId       String?
-  mintSignature String?
-  error         String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model OathProof {
+  id        Int      @id @default(autoincrement())
+  oath      String
+  wallet    String
+  dayIndex  Int
+  proofHash String
+  photoPath String
+  signature String
+  status    String   @default("PENDING")
+  objectLabel String
+  objectConfidence Float
+  gestureLabel String
+  gestureConfidence Float
+  createdAt DateTime @default(now())
+  @@unique([oath, wallet, dayIndex])
+}
 
-  @@unique([walletAddress, milestoneId])
+model DeviceToken {
+  id        Int      @id @default(autoincrement())
+  wallet    String
+  token     String   @unique
+  updatedAt DateTime @updatedAt
+}
+
+model Nudge {
+  id        Int      @id @default(autoincrement())
+  oath      String
+  sender    String
+  recipient String
+  dayIndex  Int
+  createdAt DateTime @default(now())
+  @@unique([oath, sender, recipient, dayIndex])
+}
+
+model OathWatch {
+  id        Int      @id @default(autoincrement())
+  oath      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model OathDetails {
+  id        Int      @id @default(autoincrement())
+  oath      String   @unique
+  creator   String
+  goalText  String
+  createdAt DateTime @default(now())
+}
+
+model ReminderSent {
+  id        Int      @id @default(autoincrement())
+  oath      String
+  wallet    String
+  dayIndex  Int
+  createdAt DateTime @default(now())
+  @@unique([oath, wallet, dayIndex])
+}
+
+model FaucetClaim {
+  id        Int      @id @default(autoincrement())
+  wallet    String   @unique
+  signature String
+  createdAt DateTime @default(now())
 }

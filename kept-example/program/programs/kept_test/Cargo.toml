@@ -1,0 +1,29 @@
+[package]
+name = "kept_test"
+version = "0.1.0"
+description = "kept backend test: Keeper XP, streak and Soul on Solana"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kept_test"
+
+[features]
+default = ["debug-tools", "init-if-needed"]
+debug-tools = []
+init-if-needed = ["anchor-lang/init-if-needed"]
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+anchor-debug = []
+custom-heap = []
+custom-panic = []
+
+[dependencies]
+anchor-lang = "1.2.0"
+anchor-spl = { version = "1.2.0", features = ["token", "token_2022"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }

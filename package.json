@@ -8,7 +8,7 @@
     "build": "prisma generate && tsc -p tsconfig.json",
     "start": "prisma migrate deploy && node dist/index.js",
     "prisma:generate": "prisma generate",
-    "aura:setup": "tsx scripts/aura-setup.ts",
+    "v4:setup": "tsx scripts/v4-setup.ts",
     "test": "tsx --test test/*.test.ts",
     "prisma:migrate": "prisma migrate dev --name init"
   },
@@ -16,16 +16,15 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@metaplex-foundation/mpl-bubblegum": "^6.0.0",
-    "@metaplex-foundation/umi": "^1.6.0",
-    "@metaplex-foundation/umi-bundle-defaults": "^1.6.0",
     "@prisma/client": "^6.1.0",
+    "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.10.1",
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "prisma": "^6.1.0",
+    "tweetnacl": "^1.0.3",
     "typescript": "^5.7.2"
   },
   "devDependencies": {

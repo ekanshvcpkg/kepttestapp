@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "KEPT V4 Devnet",
+    "slug": "kept-v4-devnet",
+    "scheme": "kept",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      ["expo-camera", { "cameraPermission": "KEPT uses the camera to capture daily Oath proof.", "barcodeScannerEnabled": true }],
+      "expo-notifications"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.kept.backendtest"
+    }
+  }
+}
